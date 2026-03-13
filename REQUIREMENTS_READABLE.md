@@ -13,12 +13,15 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 
 ## Binding Requirements
 - A Web3 user can bind different Web2 identities per `providerId`.
+- A Web3 user can have multiple bindings across providers and within the same provider, because the nullifier does not reveal the provider.
 - A Web2 identity (via `identityNullifier`) can bind to only one Web3 user.
 - Binding is stored as `identityNullifier -> user`.
 - Binding is enforced per provider, not per criteria.
+- Binding happens only via a successful on-chain verification result submission; there is no manual bind flow.
 - Unbind is supported and removes all historical data tied to that nullifier.
 - Unbind is blocked if the cooldown window since the last bind or last result submission has not elapsed.
 - Unbind is blocked if any downstream system has locked the result.
+- When a verification result is submitted on-chain and all other requirements are met, the system automatically binds the `identityNullifier` to `proofUser` if it is not already bound.
 
 ## Security Requirements
 - Proofs must include `proofUser` and results must be stored under `proofUser`, not `msg.sender`.
@@ -28,6 +31,7 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - The contract must reject reused timestamps, reused nonces, and reused proof hashes.
 - The contract must reject proofs older than the latest stored result for the same user and criteria.
 - Relayers are allowed, but results still belong to `proofUser`.
+- There is no manual bind flow; binding can only occur via a successful verification result.
 
 ## Verification Result Requirements
 - Each stored result includes `providerCriteriaId`, `identityNullifier`, `providerOutput`, and any other required fields.
@@ -35,8 +39,6 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - Only the latest result per `(user, providerCriteriaId)` is active.
 
 ## Functional Requirements
-- Implement `bindIdentity(user, identityNullifier)`.
-- Reject `bindIdentity` if the `identityNullifier` is already bound to a different user.
 - Implement `unbindIdentity(user, identityNullifier)`.
 - Reject `unbindIdentity` if the cooldown window since last bind or last result submission has not elapsed.
 - Reject `unbindIdentity` if any downstream system has locked the result.
@@ -52,6 +54,7 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - Reject `submitVerificationResult` if `providerCriteriaId` is unregistered (when on-chain).
 - Reject `submitVerificationResult` if the proof is stale or replayed.
 - Reject `submitVerificationResult` if the proof is invalid.
+- Auto-bind `identityNullifier` to `proofUser` on successful submission when no binding exists.
 
 ## Query Requirements
 - Implement `getLatestResult(user, providerCriteriaId)` that returns the latest result or empty if none.
@@ -73,7 +76,7 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 
 ## Acceptance Criteria (User-Focused)
 ### Identity Binding (Provider-Level)
-- Binding correctness: `bindIdentity(user, identityNullifier)` succeeds only if the nullifier is not bound to another user and the user is not bound to a different nullifier.
+- Binding correctness: Binding is created only by a successful on-chain verification result and only if the nullifier is not bound to another user.
 - Unbinding correctness: After `unbindIdentity(user, identityNullifier)`, there is no active binding and all historical results for that nullifier are wiped.
 - Nullifier determinism: For the same `(providerId, web2UserId)`, zkVM always outputs the same `identityNullifier`.
 

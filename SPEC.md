@@ -14,6 +14,7 @@ This document defines the data model, identifiers, and interfaces for a zkVM-ver
 ## Identifier Derivations
 - `providerCriteriaId` is deterministically derived from `(providerId, criteriaDefinition)`.
 - `identityNullifier` is deterministically derived from `(providerId, web2UserUniqueId)` and is provider-scoped.
+- `providerCriteriaId` is provider-scoped because `providerId` is part of its derivation, so it does not collide across providers except by hash collision.
 
 ## zkVM Output Schema
 The zkVM output includes:
@@ -39,7 +40,6 @@ The zkVM output includes:
 
 ## Interfaces
 Function signatures:
-- `bindIdentity(user, identityNullifier)`
 - `unbindIdentity(user, identityNullifier)`
 - `submitVerificationResult(proof)`
 - `getLatestResult(user, providerCriteriaId)`
@@ -54,6 +54,10 @@ Function signatures:
 ## Relayer Support
 - Transactions may be submitted by relayers.
 - Storage is always keyed by `proofUser` from the zkVM output, not by transaction sender.
+
+## Binding Behavior
+- There is no manual bind operation; binding occurs only via successful on-chain verification result submission.
+- On a successful `submitVerificationResult`, if no binding exists, the contract auto-binds `identityNullifier` to `proofUser` (provider-scoped).
 
 ## Result Selection
 - The latest stored result per `(user, providerCriteriaId)` is considered the active result.

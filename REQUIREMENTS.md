@@ -9,6 +9,7 @@ R-5. The system shall correctly map proofs to providers and criteria sets.
 
 ## Binding Requirements
 BR-1. A Web3 user shall be able to bind to different Web2 identities per `providerId`.
+BR-1a. A Web3 user may have multiple bindings across providers and within the same provider, since the nullifier does not reveal the provider.
 BR-2. The system shall support unbind operations.
 BR-3. Binding shall be represented by storing `identityNullifier` and `user`.
 BR-4. A Web2 identity (via `identityNullifier`) shall bind to only one Web3 user.
@@ -16,6 +17,8 @@ BR-5. Binding shall be enforced per provider (not per criteria).
 BR-6. After unbind, all historical data for that nullifier shall be wiped.
 BR-7. Unbind shall be blocked if a cooldown window since the last bind or last result submission has not elapsed.
 BR-8. Unbind shall be blocked if any downstream system has locked the result.
+BR-9. Binding shall only occur through successful on-chain verification result submission; no manual bind operation shall exist.
+BR-10. When a verification result is submitted on-chain and all other requirements are met, the system shall automatically bind the `identityNullifier` to `proofUser` if it is not already bound.
 
 ## Security Requirements
 SR-1. Proofs shall be user-bound by including `proofUser` in the zkVM output.
@@ -26,6 +29,7 @@ SR-5. Proofs shall include replay-prevention fields: `timestamp` or `nonce` or `
 SR-6. The contract shall reject reused timestamps, reused nonces, and reused proof hashes.
 SR-7. The contract shall reject proofs older than the latest stored result for the same user and criteria.
 SR-8. The system shall allow relayer-submitted transactions while still enforcing that results are stored under `proofUser`.
+SR-9. There shall be no manual bind operation; binding shall only occur via successful verification result submission.
 
 ## Verification Result Requirements
 VR-1. Each stored result shall include: `providerCriteriaId`, `identityNullifier`, `providerOutput`, and any extra required fields.
@@ -33,24 +37,23 @@ VR-2. Users may have multiple results per `providerCriteriaId`.
 VR-3. Only the latest result per `(user, providerCriteriaId)` shall be active.
 
 ## Functional Requirements
-FR-1. The system shall implement `bindIdentity(user, identityNullifier)`.
-FR-2. `bindIdentity` shall fail if the `identityNullifier` is already bound to a different user.
-FR-3. The system shall implement `unbindIdentity(user, identityNullifier)`.
-FR-4. `unbindIdentity` shall fail if the cooldown window since last bind or last result submission has not elapsed.
-FR-5. `unbindIdentity` shall fail if any downstream system has locked the result.
-FR-6. `unbindIdentity` shall be callable only by `proofUser`.
-FR-7. `unbindIdentity` shall wipe all historical data for the nullifier upon success.
-FR-9. The system shall implement `submitVerificationResult(proof)`.
-FR-10. `submitVerificationResult` shall verify the zkVM proof.
-FR-11. `submitVerificationResult` shall validate `providerCriteriaId` if it is maintained on-chain.
-FR-12. `submitVerificationResult` shall enforce impersonation resistance and replay protection.
-FR-13. `submitVerificationResult` shall store results under `proofUser`.
-FR-14. `submitVerificationResult` shall update the latest-result pointer per `(user, providerCriteriaId)`.
-FR-15. `submitVerificationResult` shall fail if:
-FR-15a. the `identityNullifier` is bound to another user, or
-FR-15b. the `providerCriteriaId` is unregistered (if on-chain), or
-FR-15c. the proof is stale or replayed, or
-FR-15d. the proof is invalid.
+FR-1. The system shall implement `unbindIdentity(user, identityNullifier)`.
+FR-2. `unbindIdentity` shall fail if the cooldown window since last bind or last result submission has not elapsed.
+FR-3. `unbindIdentity` shall fail if any downstream system has locked the result.
+FR-4. `unbindIdentity` shall be callable only by `proofUser`.
+FR-5. `unbindIdentity` shall wipe all historical data for the nullifier upon success.
+FR-6. The system shall implement `submitVerificationResult(proof)`.
+FR-7. `submitVerificationResult` shall verify the zkVM proof.
+FR-8. `submitVerificationResult` shall validate `providerCriteriaId` if it is maintained on-chain.
+FR-9. `submitVerificationResult` shall enforce impersonation resistance and replay protection.
+FR-10. `submitVerificationResult` shall store results under `proofUser`.
+FR-11. `submitVerificationResult` shall update the latest-result pointer per `(user, providerCriteriaId)`.
+FR-12. `submitVerificationResult` shall fail if:
+FR-12a. the `identityNullifier` is bound to another user, or
+FR-12b. the `providerCriteriaId` is unregistered (if on-chain), or
+FR-12c. the proof is stale or replayed, or
+FR-12d. the proof is invalid.
+FR-13. `submitVerificationResult` shall auto-bind `identityNullifier` to `proofUser` if no binding exists and all other requirements are met.
 
 ## Query Requirements
 QR-1. The system shall implement `getLatestResult(user, providerCriteriaId)`.
@@ -73,13 +76,13 @@ NFR-3. The system shall use a modular design.
 
 ## Acceptance Criteria
 AC-1. Identity Binding (Provider-Level)
-AC-1.1. Binding correctness: When a user calls `bindIdentity(user, identityNullifier)`, the contract must store the binding only if:
-AC-1.1a. the `identityNullifier` is not already bound to another user, and
-AC-1.1b. the user is not already bound to a different nullifier.
+AC-1.1. Binding correctness: When a verification result is submitted on-chain, the contract must store the binding only if:
+AC-1.1a. the `identityNullifier` is not already bound to another user.
 AC-1.2. Unbinding correctness: After `unbindIdentity(user, identityNullifier)`, the user must:
 AC-1.2a. no longer have an active binding for that nullifier, and
 AC-1.2b. have all historical verification results for that nullifier wiped out.
 AC-1.3. Nullifier determinism: For the same `(providerId, web2UserId)`, the zkVM must always output the same `identityNullifier`.
+AC-1.4. Auto-bind on submit: When a verification result is submitted on-chain and passes all checks, the contract must auto-bind the `identityNullifier` to `proofUser` if no binding exists.
 AC-2. Verification Result Submission
 AC-2.1. Proof-user attribution: When a proof is submitted, the verification result must be stored under `proofUser` (the user inside the proof), not `msg.sender`.
 AC-2.2. Binding validation: The contract must reject proofs where `identityNullifier` is bound to a different user.

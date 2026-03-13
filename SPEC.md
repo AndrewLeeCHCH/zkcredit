@@ -42,6 +42,7 @@ The zkVM output includes:
 Function signatures:
 - `unbindIdentity(user, identityNullifier)`
 - `submitVerificationResult(proof)`
+- `reportDownstreamUsage(identityNullifier, inUse)`
 - `getLatestResult(user, providerCriteriaId)`
 - `getAllResults(user, providerCriteriaId)` (optional)
 
@@ -58,6 +59,7 @@ Function signatures:
 ## Binding Behavior
 - There is no manual bind operation; binding occurs only via successful on-chain verification result submission.
 - On a successful `submitVerificationResult`, if no binding exists, the contract auto-binds `identityNullifier` to `proofUser` (provider-scoped).
+- Multi-criteria proofs are supported; on-chain stores `providerOutput` as opaque bytes while zkVM defines encoding/decoding for downstream interpretation.
 
 ## Result Selection
 - The latest stored result per `(user, providerCriteriaId)` is considered the active result.
@@ -67,3 +69,19 @@ Function signatures:
 - No raw Web2 user IDs are stored or emitted on-chain.
 - All identity references use `identityNullifier`.
 - `identityNullifier` and `providerCriteriaId` are deterministic, and zkVM outputs are deterministic for identical inputs.
+
+## On-Chain Requirements Summary
+- Standardized, deterministic error codes are used for all rejection paths.
+- Downstream usage is reported via `reportDownstreamUsage`, restricted to whitelisted callers.
+- The nullifier is considered locked if any whitelisted service reports `inUse = true`; multiple services may use a result concurrently.
+- `providerOutput` is stored as opaque bytes; downstream services interpret according to zkVM-defined encoding.
+- Performance evaluation includes gas cost per operation, storage growth, and query latency with baselines.
+- Governance defines approval and versioning for provider/criteria changes.
+
+## zkVM Requirements Summary
+- Criteria is a formal object (`providerCriteriaId`, `evaluationLogic`, `encodingRules`).
+- Multi-criteria proofs are supported with outputs for each requested criterion.
+- Explicit encoding/decoding is defined for on-chain verification results.
+- Deterministic error signaling uses enumerated error codes and fail-fast proof generation.
+- Threat model and trust boundaries are documented; audit artifacts are produced.
+- Performance evaluation covers proving time, memory, proof size, verification cost, and baselines.

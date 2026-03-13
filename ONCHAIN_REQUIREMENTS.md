@@ -19,6 +19,11 @@ BR-7. Unbind shall be blocked if a cooldown window since the last bind or last r
 BR-8. Unbind shall be blocked if any downstream system has locked the result.
 BR-9. Binding shall only occur through successful on-chain verification result submission; no manual bind operation shall exist.
 BR-10. When a verification result is submitted on-chain and all other requirements are met, the system shall automatically bind the `identityNullifier` to `proofUser` if it is not already bound.
+BR-11. The system shall provide a contract call to notify that an `identityNullifier` is in use or no longer in use by downstream services.
+BR-12. The downstream usage notification call shall be restricted to whitelisted callers.
+BR-13. The contract shall treat `inUse` as a downstream-defined lock signal that prevents unbind; the on-chain system does not interpret the business meaning beyond lock/unlock.
+BR-14. The system shall allow multiple downstream services to use the same verification result concurrently.
+BR-15. An `identityNullifier` shall be considered locked if any whitelisted downstream service reports `inUse = true`.
 
 ## Security Requirements
 SR-1. Proofs shall be user-bound by including `proofUser` in the zkVM output.
@@ -30,11 +35,14 @@ SR-6. The contract shall reject reused timestamps, reused nonces, and reused pro
 SR-7. The contract shall reject proofs older than the latest stored result for the same user and criteria.
 SR-8. The system shall allow relayer-submitted transactions while still enforcing that results are stored under `proofUser`.
 SR-9. There shall be no manual bind operation; binding shall only occur via successful verification result submission.
+SR-10. Downstream lock/unlock notifications shall be accepted only from whitelisted callers to prevent malicious locking or unlocking of bindings.
 
 ## Verification Result Requirements
 VR-1. Each stored result shall include: `providerCriteriaId`, `identityNullifier`, `providerOutput`, and any extra required fields.
 VR-2. Users may have multiple results per `providerCriteriaId`.
 VR-3. Only the latest result per `(user, providerCriteriaId)` shall be active.
+VR-4. Multi-criteria proofs are supported; their combined output shall be stored as an opaque blob, and downstream services are responsible for interpretation and usage.
+VR-5. The on-chain contract treats `providerOutput` as opaque bytes even though zkVM defines explicit encoding/decoding for downstream interpretation.
 
 ## Functional Requirements
 FR-1. The system shall implement `unbindIdentity(user, identityNullifier)`.
@@ -42,6 +50,12 @@ FR-2. `unbindIdentity` shall fail if the cooldown window since last bind or last
 FR-3. `unbindIdentity` shall fail if any downstream system has locked the result.
 FR-4. `unbindIdentity` shall be callable only by `proofUser`.
 FR-5. `unbindIdentity` shall wipe all historical data for the nullifier upon success.
+FR-5a. The system shall implement `reportDownstreamUsage(identityNullifier, inUse)` to lock/unlock unbind based on downstream usage.
+FR-5b. `reportDownstreamUsage` shall be callable only by whitelisted addresses.
+FR-5c. `reportDownstreamUsage` shall only toggle the unbind lock state; any semantic meaning of `inUse` is defined by the downstream service.
+FR-5d. The system shall track downstream usage per whitelisted service and treat the nullifier as locked if any service reports `inUse = true`.
+FR-5e. A downstream service shall only be able to unlock (`inUse = false`) if it previously locked (`inUse = true`).
+FR-5f. Repeated `inUse = true` calls from the same service shall be idempotent.
 FR-6. The system shall implement `submitVerificationResult(proof)`.
 FR-7. `submitVerificationResult` shall verify the zkVM proof.
 FR-8. `submitVerificationResult` shall validate `providerCriteriaId` if it is maintained on-chain.
@@ -54,6 +68,7 @@ FR-12b. the `providerCriteriaId` is unregistered (if on-chain), or
 FR-12c. the proof is stale or replayed, or
 FR-12d. the proof is invalid.
 FR-13. `submitVerificationResult` shall auto-bind `identityNullifier` to `proofUser` if no binding exists and all other requirements are met.
+FR-14. The contract shall use deterministic, standardized error codes/messages for all rejection paths.
 
 ## Query Requirements
 QR-1. The system shall implement `getLatestResult(user, providerCriteriaId)`.
@@ -68,11 +83,19 @@ CI-3. Only `identityNullifier` shall be stored on-chain.
 CI-4. `identityNullifier` shall be deterministic.
 CI-5. `providerCriteriaId` shall be deterministic.
 CI-6. zkVM outputs shall be deterministic.
+CI-7. The system shall produce audit artifacts for external review, including logs and evidence of domain separation and replay protection checks.
 
 ## Non-Functional Requirements
 NFR-1. The system shall be gas-efficient.
 NFR-2. The system shall be upgradeable.
 NFR-3. The system shall use a modular design.
+NFR-4. The system shall define governance for provider and criteria changes, including approval authority and versioning to prevent fragmentation.
+
+## Performance Evaluation Matrix
+PM-1. Metrics shall include gas cost per operation (`bind` via submit, `unbind`, `submitVerificationResult`, `getLatestResult`, and downstream usage reporting), storage growth per result, and query latency (on-chain view call and off-chain indexing).
+PM-2. Measurements shall be reported for typical and worst-case inputs (including multi-criteria proofs and large `providerOutput` blobs).
+PM-3. The report shall identify primary gas/storage cost drivers and optimization opportunities.
+PM-4. The report shall compare results against at least one baseline (prior version or alternative implementation) and explain deltas.
 
 ## Acceptance Criteria
 AC-1. Identity Binding (Provider-Level)
@@ -83,6 +106,8 @@ AC-1.2a. no longer have an active binding for that nullifier, and
 AC-1.2b. have all historical verification results for that nullifier wiped out.
 AC-1.3. Nullifier determinism: For the same `(providerId, web2UserId)`, the zkVM must always output the same `identityNullifier`.
 AC-1.4. Auto-bind on submit: When a verification result is submitted on-chain and passes all checks, the contract must auto-bind the `identityNullifier` to `proofUser` if no binding exists.
+AC-1.5. Downstream usage signaling: The contract exposes a lock/unlock notification call that marks an `identityNullifier` as in-use or no longer in-use.
+AC-1.6. Whitelist enforcement: Only whitelisted callers can lock or unlock downstream usage, and unauthorized calls are rejected.
 AC-2. Verification Result Submission
 AC-2.1. Proof-user attribution: When a proof is submitted, the verification result must be stored under `proofUser` (the user inside the proof), not `msg.sender`.
 AC-2.2. Binding validation: The contract must reject proofs where `identityNullifier` is bound to a different user.
@@ -107,6 +132,7 @@ AC-5.1. Freshness enforcement: The contract must reject proofs if:
 AC-5.1a. the timestamp is older than the latest stored result, or
 AC-5.1b. the nonce has been used before, or
 AC-5.1c. the `proofHash` has been used before.
+AC-9. Error signaling: Rejection paths emit standardized, deterministic error codes/messages that downstream systems can rely on.
 AC-5.2. Rebinding invalidation: After a user unbinds and rebinds to a new `identityNullifier`, all proofs tied to the old nullifier must be rejected.
 AC-6. Querying
 AC-6.1. Latest result: `getLatestResult(user, providerCriteriaId)` must return the most recent result, or empty if none exists.
@@ -118,3 +144,16 @@ AC-8. Determinism and Consistency
 AC-8.1. Deterministic nullifier: Same `(providerId, web2UserId)` must always produce the same `identityNullifier`.
 AC-8.2. Deterministic providerCriteriaId: Same ruleset must always produce the same `providerCriteriaId`.
 AC-8.3. Deterministic zkVM output: zkVM must produce identical outputs for identical inputs.
+AC-8.4. Audit artifacts exist for external review, including logs and evidence of domain separation and replay protection checks.
+AC-9. Error signaling: Rejection paths emit standardized, deterministic error codes/messages that downstream systems can rely on.
+
+## Standard Error Codes
+E-1. `ERR_NULLIFIER_BOUND`: `identityNullifier` is already bound to another user.
+E-2. `ERR_PROVIDER_CRITERIA_UNREGISTERED`: `providerCriteriaId` is not registered (when on-chain registry is used).
+E-3. `ERR_PROOF_REPLAY`: proof is stale, timestamp is older than latest, nonce reused, or `proofHash` reused.
+E-4. `ERR_PROOF_INVALID`: zkVM proof verification failed.
+E-5. `ERR_UNBIND_COOLDOWN`: unbind cooldown window has not elapsed.
+E-6. `ERR_DOWNSTREAM_LOCKED`: downstream usage lock is active.
+E-7. `ERR_UNAUTHORIZED`: caller is not authorized (e.g., non-whitelisted or not `proofUser`).
+E-8. `ERR_INPUT_MALFORMED`: input data or required fields are missing or malformed.
+E-9. `ERR_DOWNSTREAM_NOT_LOCKED`: downstream service attempted to unlock without a prior lock.

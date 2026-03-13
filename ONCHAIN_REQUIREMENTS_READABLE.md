@@ -22,6 +22,11 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - Unbind is blocked if the cooldown window since the last bind or last result submission has not elapsed.
 - Unbind is blocked if any downstream system has locked the result.
 - When a verification result is submitted on-chain and all other requirements are met, the system automatically binds the `identityNullifier` to `proofUser` if it is not already bound.
+- The contract provides a downstream usage notification call to mark an `identityNullifier` as in use or no longer in use.
+- The downstream usage notification call is restricted to whitelisted callers.
+- The contract treats `inUse` as a downstream-defined lock signal that prevents unbind; it does not interpret business meaning beyond lock/unlock.
+- Multiple downstream services may use the same verification result concurrently.
+- A nullifier is considered locked if any whitelisted downstream service reports `inUse = true`.
 
 ## Security Requirements
 - Proofs must include `proofUser` and results must be stored under `proofUser`, not `msg.sender`.
@@ -32,11 +37,14 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - The contract must reject proofs older than the latest stored result for the same user and criteria.
 - Relayers are allowed, but results still belong to `proofUser`.
 - There is no manual bind flow; binding can only occur via a successful verification result.
+- Downstream lock/unlock notifications are accepted only from whitelisted callers to prevent malicious locking or unlocking of bindings.
 
 ## Verification Result Requirements
 - Each stored result includes `providerCriteriaId`, `identityNullifier`, `providerOutput`, and any other required fields.
 - Users can have multiple results for the same `providerCriteriaId`.
 - Only the latest result per `(user, providerCriteriaId)` is active.
+- Multi-criteria proofs are supported; their combined output is stored as an opaque blob, and downstream services handle interpretation and usage.
+- The on-chain contract treats `providerOutput` as opaque bytes even though zkVM defines explicit encoding/decoding for downstream interpretation.
 
 ## Functional Requirements
 - Implement `unbindIdentity(user, identityNullifier)`.
@@ -44,6 +52,12 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - Reject `unbindIdentity` if any downstream system has locked the result.
 - Allow `unbindIdentity` only for `proofUser`.
 - Wipe all historical data for the nullifier on successful unbind.
+- Implement `reportDownstreamUsage(identityNullifier, inUse)` to lock/unlock unbind based on downstream usage.
+- Restrict `reportDownstreamUsage` to whitelisted addresses.
+- `reportDownstreamUsage` only toggles the unbind lock state; any semantic meaning of `inUse` is defined by the downstream service.
+- The system tracks downstream usage per whitelisted service and treats the nullifier as locked if any service reports `inUse = true`.
+- A downstream service can only unlock (`inUse = false`) if it previously locked (`inUse = true`).
+- Repeated `inUse = true` calls from the same service are idempotent.
 - Implement `submitVerificationResult(proof)`.
 - Verify zkVM proofs.
 - Validate `providerCriteriaId` if the registry is on-chain.
@@ -55,6 +69,7 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - Reject `submitVerificationResult` if the proof is stale or replayed.
 - Reject `submitVerificationResult` if the proof is invalid.
 - Auto-bind `identityNullifier` to `proofUser` on successful submission when no binding exists.
+- Use deterministic, standardized error codes/messages for all rejection paths.
 
 ## Query Requirements
 - Implement `getLatestResult(user, providerCriteriaId)` that returns the latest result or empty if none.
@@ -68,17 +83,27 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - `identityNullifier` is deterministic.
 - `providerCriteriaId` is deterministic.
 - zkVM outputs are deterministic.
+- Audit artifacts exist for external review, including logs and evidence of domain separation and replay protection checks.
 
 ## Non-Functional Requirements
 - Gas-efficient.
 - Upgradeable.
 - Modular design.
+- Governance exists for provider and criteria changes, including approval authority and versioning to prevent fragmentation.
+
+## Performance Evaluation Matrix
+- Metrics include gas cost per operation (bind via submit, unbind, submitVerificationResult, getLatestResult, downstream usage reporting), storage growth per result, and query latency (on-chain view call and off-chain indexing).
+- Measurements are reported for typical and worst-case inputs (including multi-criteria proofs and large `providerOutput` blobs).
+- The report identifies primary gas/storage cost drivers and optimization opportunities.
+- The report compares results against at least one baseline (prior version or alternative implementation) and explains deltas.
 
 ## Acceptance Criteria (User-Focused)
 ### Identity Binding (Provider-Level)
 - Binding correctness: Binding is created only by a successful on-chain verification result and only if the nullifier is not bound to another user.
 - Unbinding correctness: After `unbindIdentity(user, identityNullifier)`, there is no active binding and all historical results for that nullifier are wiped.
 - Nullifier determinism: For the same `(providerId, web2UserId)`, zkVM always outputs the same `identityNullifier`.
+- Downstream usage signaling: The contract exposes a lock/unlock notification call that marks an `identityNullifier` as in-use or no longer in-use.
+- Whitelist enforcement: Only whitelisted callers can lock or unlock downstream usage, and unauthorized calls are rejected.
 
 ### Verification Result Submission
 - Proof-user attribution: Results are stored under `proofUser`, not `msg.sender`.
@@ -100,6 +125,7 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 ### Replay Attack Resistance
 - Freshness enforcement: The contract rejects proofs with old timestamps, reused nonces, or reused proof hashes.
 - Rebinding invalidation: After unbind and rebind, proofs tied to the old nullifier are rejected.
+- Error signaling: Rejection paths emit standardized, deterministic error codes/messages that downstream systems can rely on.
 
 ### Querying
 - Latest result: `getLatestResult(user, providerCriteriaId)` returns the most recent result or empty.
@@ -113,3 +139,15 @@ The system provides trust-minimized verification of Web2 attributes, preserves u
 - Deterministic nullifier for the same `(providerId, web2UserId)`.
 - Deterministic `providerCriteriaId` for the same ruleset.
 - Deterministic zkVM output for identical inputs.
+- Audit artifacts exist for external review, including logs and evidence of domain separation and replay protection checks.
+
+## Standard Error Codes
+- `ERR_NULLIFIER_BOUND`: `identityNullifier` is already bound to another user.
+- `ERR_PROVIDER_CRITERIA_UNREGISTERED`: `providerCriteriaId` is not registered (when on-chain registry is used).
+- `ERR_PROOF_REPLAY`: proof is stale, timestamp is older than latest, nonce reused, or `proofHash` reused.
+- `ERR_PROOF_INVALID`: zkVM proof verification failed.
+- `ERR_UNBIND_COOLDOWN`: unbind cooldown window has not elapsed.
+- `ERR_DOWNSTREAM_LOCKED`: downstream usage lock is active.
+- `ERR_UNAUTHORIZED`: caller is not authorized (e.g., non-whitelisted or not `proofUser`).
+- `ERR_INPUT_MALFORMED`: input data or required fields are missing or malformed.
+- `ERR_DOWNSTREAM_NOT_LOCKED`: downstream service attempted to unlock without a prior lock.

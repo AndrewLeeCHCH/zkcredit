@@ -20,7 +20,6 @@ The zkVM takes public and private inputs, evaluates criteria, and produces a ver
 - Generate verification results based on criteria (for example, KYC status or GitHub account age).
 - Support multi-criteria proofs that combine multiple criteria in a single proof (for example, KYC status + GitHub account age).
 - Define explicit encoding and decoding for the on-chain verification result format.
-- Do not expose security risks.
 - Validate input structure and schema version to prevent malformed or out-of-spec inputs.
 - Ensure output encoding is unambiguous and matches the on-chain decoder.
 - Bind the evaluated criteria to `providerCriteriaId` to prevent criteria mis-binding.
@@ -49,7 +48,6 @@ The zkVM takes public and private inputs, evaluates criteria, and produces a ver
 - Output results reflect the requested criteria (for example, KYC status or GitHub account age).
 - Multi-criteria proofs are supported and output results for each requested criterion in a single proof.
 - The on-chain verification result format has documented encoding and decoding rules.
-- The zkVM design and implementation do not introduce security risks in input handling, proof generation, or output encoding.
 - Inputs that do not match the required schema or version are rejected.
 - On-chain decoding of zkVM outputs is deterministic and matches the circuit encoding without ambiguity.
 - The proof output is bound to the correct `providerCriteriaId` and criteria evaluation.

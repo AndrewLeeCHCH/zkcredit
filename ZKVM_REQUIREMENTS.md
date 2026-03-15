@@ -20,7 +20,6 @@ ZK-5. The zkVM shall support multiple criteria.
 ZK-6. The zkVM shall generate verification results based on the specified criteria (for example, KYC status or GitHub account age).
 ZK-6a. The zkVM shall support multi-criteria proofs that combine multiple criteria in a single proof (for example, KYC status + GitHub account age).
 ZK-7. The zkVM shall define explicit encoding and decoding for the on-chain verification result format.
-ZK-8. The zkVM shall not expose security risks.
 ZK-9. The zkVM shall validate input structure and schema version to prevent malformed or out-of-spec inputs.
 ZK-10. The zkVM shall ensure output encoding is unambiguous and matches the on-chain decoder.
 ZK-11. The zkVM shall bind the evaluated criteria to `providerCriteriaId` to prevent criteria mis-binding.
@@ -49,7 +48,6 @@ ZK-AC-4. The zkVM supports multiple criteria and correctly binds results to the 
 ZK-AC-5. The zkVM outputs results that reflect the requested criteria (for example, KYC status or GitHub account age).
 ZK-AC-5a. The zkVM supports multi-criteria proofs and outputs results for each requested criterion in a single proof.
 ZK-AC-6. The on-chain verification result format has documented encoding and decoding rules.
-ZK-AC-7. The zkVM design and implementation do not introduce security risks in input handling, proof generation, or output encoding.
 ZK-AC-8. The zkVM rejects inputs that do not match the required schema or version.
 ZK-AC-9. On-chain decoding of zkVM outputs is deterministic and matches the circuit encoding without ambiguity.
 ZK-AC-10. The proof output is bound to the correct `providerCriteriaId` and criteria evaluation.
